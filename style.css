@@ -59,6 +59,12 @@ body {
     align-items: flex-start;
     justify-content: space-between;
 }
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-top: 2px;
+}
 .app-title {
     font-family: 'Instrument Serif', serif;
     font-size: 1.75rem;
@@ -73,6 +79,18 @@ body {
     color: rgba(245,240,232,0.4);
     margin-top: 0.2rem;
 }
+
+/* ── Sync indicator ── */
+.sync-indicator {
+    font-size: 0.58rem;
+    letter-spacing: 0.06em;
+    color: rgba(245,240,232,0.45);
+    opacity: 0;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+}
+.sync-indicator.show { opacity: 1; }
+
 .history-btn {
     background: none;
     border: 1px solid rgba(255,255,255,0.15);
@@ -146,8 +164,9 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    transition: box-shadow 0.4s ease;
+    transition: box-shadow 0.4s ease, opacity 0.2s ease;
 }
+.week-card.loading { opacity: 0.5; pointer-events: none; }
 .week-card-header {
     background: var(--paper-darker);
     border-bottom: 1px solid var(--rule);
@@ -208,7 +227,7 @@ body {
     background: var(--paper-dark);
 }
 
-/* Walked state */
+/* Walked */
 .day-btn.walked {
     background: var(--done);
     border-color: var(--done);
@@ -229,7 +248,7 @@ body {
     box-shadow: 0 0 0 3px rgba(74,103,65,0.2);
 }
 
-/* Rest state */
+/* Rest */
 .day-btn.rest {
     background: var(--rest-faint);
     border-color: var(--rest);
@@ -250,7 +269,6 @@ body {
 
 .day-btn.future { opacity: 0.28; cursor: default; }
 
-/* Tap pop animation */
 @keyframes pop {
     0%   { transform: scale(1); }
     35%  { transform: scale(1.3); }
@@ -373,9 +391,7 @@ body {
     display: flex;
     flex-direction: column;
 }
-.history-panel.open .history-sheet {
-    transform: translateY(0);
-}
+.history-panel.open .history-sheet { transform: translateY(0); }
 .history-header {
     display: flex;
     align-items: center;

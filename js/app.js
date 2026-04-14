@@ -1,27 +1,40 @@
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+// ── Loading state ──────────────────────────────────────────────────────────
+
+function setLoading(on) {
+    document.getElementById('weekCard').classList.toggle('loading', on);
+    document.getElementById('syncIndicator').classList.toggle('show', on);
+}
+
+function setSyncing(on) {
+    document.getElementById('syncIndicator').textContent = on ? 'syncing…' : 'synced ✓';
+    document.getElementById('syncIndicator').classList.add('show');
+    if (!on) setTimeout(() => document.getElementById('syncIndicator').classList.remove('show'), 2000);
+}
+
 // ── Stats ──────────────────────────────────────────────────────────────────
 
 function renderStats(data, days) {
     const streak = calcStreak(data);
-    const pct = calcWeekPct(days);
+    const pct    = calcWeekPct(days);
     document.getElementById('statStreak').innerHTML = `${streak}<span class="stat-suffix">d</span>`;
-    document.getElementById('statPct').innerHTML = `${pct}<span class="stat-suffix">%</span>`;
+    document.getElementById('statPct').innerHTML    = `${pct}<span class="stat-suffix">%</span>`;
 }
 
 // ── Day grid ───────────────────────────────────────────────────────────────
 
 function renderGrid(days, monday, animateIdx = null) {
-    const grid = document.getElementById('daysGrid');
+    const grid  = document.getElementById('daysGrid');
     grid.innerHTML = '';
 
-    const ti = todayIndex();
+    const ti    = todayIndex();
     const today = new Date(); today.setHours(0, 0, 0, 0);
 
     DAYS.forEach((name, i) => {
-        const date = new Date(monday); date.setDate(date.getDate() + i);
+        const date   = new Date(monday); date.setDate(date.getDate() + i);
         const future = date > today;
-        const state = days[i];
+        const state  = days[i];
 
         const cell = document.createElement('div');
         cell.className = 'day-cell';
@@ -38,8 +51,7 @@ function renderGrid(days, monday, animateIdx = null) {
         if (future)                 classes.push('future');
         if (i === animateIdx)       classes.push('pop');
         btn.className = classes.join(' ');
-        btn.disabled = future;
-        btn.title = future ? '' : 'Tap: walked · Tap again: rest day · Tap again: clear';
+        btn.disabled  = future;
 
         if (!future) btn.addEventListener('click', () => onDayTap(i));
 
@@ -52,15 +64,14 @@ function renderGrid(days, monday, animateIdx = null) {
 // ── Week complete glow ─────────────────────────────────────────────────────
 
 function renderWeekComplete(days) {
-    const ti = todayIndex();
-    const card = document.getElementById('weekCard');
-    const msg  = document.getElementById('doneMsg');
-
-    // all past+today days are either walked or rest, and at least one walked
+    const ti    = todayIndex();
+    const card  = document.getElementById('weekCard');
+    const msg   = document.getElementById('doneMsg');
     const slice = days.slice(0, ti + 1);
+
     const allAccountedFor = slice.every(s => s === STATE_WALKED || s === STATE_REST);
-    const anyWalked = slice.some(s => s === STATE_WALKED);
-    const complete = allAccountedFor && anyWalked && ti >= 4;
+    const anyWalked       = slice.some(s => s === STATE_WALKED);
+    const complete        = allAccountedFor && anyWalked && ti >= 4;
 
     msg.classList.toggle('show', complete);
     if (complete && !card.classList.contains('glow')) {
@@ -73,8 +84,8 @@ function renderWeekComplete(days) {
 
 function renderHistory() {
     const { data } = getState();
-    const past = getPastWeeks(data, 4);
-    const list = document.getElementById('historyList');
+    const past     = getPastWeeks(data, 4);
+    const list     = document.getElementById('historyList');
     list.innerHTML = '';
 
     if (past.length === 0) {
@@ -121,8 +132,7 @@ function renderHistory() {
 
 function openHistory() {
     renderHistory();
-    const panel = document.getElementById('historyPanel');
-    panel.classList.add('open');
+    document.getElementById('historyPanel').classList.add('open');
     document.body.style.overflow = 'hidden';
 }
 
@@ -143,12 +153,14 @@ function render(animateIdx = null) {
     renderWeekComplete(days);
 }
 
-function onDayTap(dayIndex) {
-    const newState = cycleDay(dayIndex);
+async function onDayTap(dayIndex) {
+    setSyncing(true);
+    const newState = await cycleDay(dayIndex);
     render(newState === STATE_WALKED ? dayIndex : null);
+    setSyncing(false);
 }
 
-// ── History button ─────────────────────────────────────────────────────────
+// ── History listeners ──────────────────────────────────────────────────────
 
 document.getElementById('historyBtn').addEventListener('click', openHistory);
 document.getElementById('historyClose').addEventListener('click', closeHistory);
@@ -158,4 +170,12 @@ document.getElementById('historyPanel').addEventListener('click', e => {
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 
-render();
+async function init() {
+    setLoading(true);
+    render(); // render from cache immediately
+    await syncLoad();
+    render(); // re-render with fresh GitHub data
+    setLoading(false);
+}
+
+init();

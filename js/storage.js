@@ -1,22 +1,90 @@
-const STORAGE_KEY = 'walklog_v3';
+const STORAGE_KEY  = 'walklog_v3';
 const WEEK_HISTORY = 8;
+const DATA_FILE = 'data/walk-data.json';
 
 const STATE_NONE   = 'none';
 const STATE_WALKED = 'walked';
 const STATE_REST   = 'rest';
 
-function storageLoad() {
+// ── Local cache ────────────────────────────────────────────────────────────
+
+function cacheLoad() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
     catch { return {}; }
 }
 
-function storageSave(data) {
+function cacheSave(data) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 
+// ── GitHub API ─────────────────────────────────────────────────────────────
+
+const GH_API = 'https://api.github.com';
+
+function ghHeaders() {
+    return {
+        'Authorization': `Bearer ${CONFIG.token}`,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+    };
+}
+
+async function ghRead() {
+    const url = `${GH_API}/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${DATA_FILE}`;
+    const res = await fetch(url, { headers: ghHeaders() });
+    if (res.status === 404) return { data: {}, sha: null };
+    if (!res.ok) throw new Error(`GitHub read failed: ${res.status}`);
+    const json = await res.json();
+    const data = JSON.parse(atob(json.content.replace(/\n/g, '')));
+    return { data, sha: json.sha };
+}
+
+async function ghWrite(data, sha) {
+    const url     = `${GH_API}/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${DATA_FILE}`;
+    const content = btoa(JSON.stringify(data, null, 2));
+    const body    = { message: 'update walk data', content, ...(sha ? { sha } : {}) };
+    const res = await fetch(url, {
+        method: 'PUT',
+        headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`GitHub write failed: ${res.status}`);
+    const json = await res.json();
+    return json.content.sha;
+}
+
+// ── Sync state (held in memory during session) ─────────────────────────────
+
+let _sha  = null;
+let _data = null;
+
+async function syncLoad() {
+    try {
+        const { data, sha } = await ghRead();
+        _sha  = sha;
+        _data = data;
+        cacheSave(data);
+    } catch (e) {
+        console.warn('GitHub read failed, falling back to cache:', e);
+        _data = cacheLoad();
+    }
+}
+
+async function syncSave() {
+    try {
+        _sha = await ghWrite(_data, _sha);
+        cacheSave(_data);
+    } catch (e) {
+        console.warn('GitHub write failed, saved to cache only:', e);
+        cacheSave(_data);
+    }
+}
+
+// ── Date helpers ───────────────────────────────────────────────────────────
+
 function getMonday(d) {
     const date = new Date(d);
-    const day = date.getDay();
+    const day  = date.getDay();
     date.setDate(date.getDate() + (day === 0 ? -6 : 1 - day));
     date.setHours(0, 0, 0, 0);
     return date;
@@ -27,14 +95,15 @@ function weekKey(monday) {
 }
 
 function migrateWeek(days) {
-    // migrate old boolean arrays to string arrays
     return days.map(v => typeof v === 'boolean' ? (v ? STATE_WALKED : STATE_NONE) : v);
 }
 
+// ── State ──────────────────────────────────────────────────────────────────
+
 function getState() {
-    const data = storageLoad();
+    const data   = _data || cacheLoad();
     const monday = getMonday(new Date());
-    const wk = weekKey(monday);
+    const wk     = weekKey(monday);
 
     if (!data.weeks) data.weeks = {};
     if (!data.weeks[wk]) data.weeks[wk] = Array(7).fill(STATE_NONE);
@@ -45,19 +114,20 @@ function getState() {
         keys.slice(0, keys.length - WEEK_HISTORY).forEach(k => delete data.weeks[k]);
     }
 
-    storageSave(data);
+    _data = data;
     return { data, monday, wk };
 }
 
 // Tap cycles: none → walked → rest → none
-function cycleDay(dayIndex) {
+async function cycleDay(dayIndex) {
     const { data, wk } = getState();
-    const cur = data.weeks[wk][dayIndex];
-    const next = cur === STATE_NONE ? STATE_WALKED
-        : cur === STATE_WALKED ? STATE_REST
-            : STATE_NONE;
+    const cur  = data.weeks[wk][dayIndex];
+    const next = cur === STATE_NONE    ? STATE_WALKED
+        : cur === STATE_WALKED  ? STATE_REST
+            :                        STATE_NONE;
     data.weeks[wk][dayIndex] = next;
-    storageSave(data);
+    _data = data;
+    await syncSave();
     return next;
 }
 
@@ -66,29 +136,29 @@ function todayIndex() {
     return d === 0 ? 6 : d - 1;
 }
 
-// Rest days are neutral — don't increment but don't break streak either
+// ── Stats ──────────────────────────────────────────────────────────────────
+
 function calcStreak(data) {
     const weeks = Object.keys(data.weeks).sort().reverse();
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    let streak = 0;
+    let streak  = 0;
     for (const wk of weeks) {
-        const mon = new Date(wk + 'T00:00:00');
+        const mon  = new Date(wk + 'T00:00:00');
         const days = migrateWeek(data.weeks[wk]);
         for (let i = 6; i >= 0; i--) {
             const d = new Date(mon); d.setDate(d.getDate() + i);
             if (d > today) continue;
-            if (days[i] === STATE_WALKED)      streak++;
-            else if (days[i] === STATE_REST)   continue;
-            else                               return streak;
+            if (days[i] === STATE_WALKED)     streak++;
+            else if (days[i] === STATE_REST)  continue;
+            else                              return streak;
         }
     }
     return streak;
 }
 
-// % excludes rest days from denominator
 function calcWeekPct(days) {
-    const ti = todayIndex();
-    const slice = days.slice(0, ti + 1);
+    const ti     = todayIndex();
+    const slice  = days.slice(0, ti + 1);
     const active = slice.filter(s => s !== STATE_REST).length;
     const walked = slice.filter(s => s === STATE_WALKED).length;
     return active === 0 ? 0 : Math.round((walked / active) * 100);
@@ -96,7 +166,7 @@ function calcWeekPct(days) {
 
 function formatWeekRange(monday) {
     const end = new Date(monday); end.setDate(end.getDate() + 6);
-    const f = d => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    const f   = d => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
     return `${f(monday)} – ${f(end)}`;
 }
 
@@ -108,8 +178,8 @@ function getPastWeeks(data, n = 4) {
         .slice(-n)
         .reverse()
         .map(k => ({
-            key: k,
+            key:    k,
             monday: new Date(k + 'T00:00:00'),
-            days: migrateWeek(data.weeks[k])
+            days:   migrateWeek(data.weeks[k])
         }));
 }
