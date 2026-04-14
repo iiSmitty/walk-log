@@ -19,15 +19,6 @@ function cacheSave(data) {
 // ── GitHub API ─────────────────────────────────────────────────────────────
 
 const GH_API   = 'https://walk-log-sync.andrez-smit.workers.dev';
-const DATA_FILE = 'data/walk-data.json'; // kept for reference only
-
-function ghHeaders() {
-    return {
-        'Authorization': `Bearer ${CONFIG.token}`,
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-    };
-}
 
 async function ghRead() {
     const res = await fetch(`${GH_API}`, { method: 'GET' });
