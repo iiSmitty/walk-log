@@ -178,4 +178,8 @@ async function init() {
     setLoading(false);
 }
 
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') init();
+});
+
 init();
