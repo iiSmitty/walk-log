@@ -1,6 +1,5 @@
 const STORAGE_KEY  = 'walklog_v3';
 const WEEK_HISTORY = 8;
-const DATA_FILE = 'data/walk-data.json';
 
 const STATE_NONE   = 'none';
 const STATE_WALKED = 'walked';
@@ -19,7 +18,8 @@ function cacheSave(data) {
 
 // ── GitHub API ─────────────────────────────────────────────────────────────
 
-const GH_API = 'https://api.github.com';
+const GH_API   = 'https://walk-log-sync.andrez-smit.workers.dev';
+const DATA_FILE = 'data/walk-data.json'; // kept for reference only
 
 function ghHeaders() {
     return {
@@ -30,27 +30,20 @@ function ghHeaders() {
 }
 
 async function ghRead() {
-    const url = `${GH_API}/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${DATA_FILE}`;
-    const res = await fetch(url, { headers: ghHeaders() });
-    if (res.status === 404) return { data: {}, sha: null };
-    if (!res.ok) throw new Error(`GitHub read failed: ${res.status}`);
-    const json = await res.json();
-    const data = JSON.parse(atob(json.content.replace(/\n/g, '')));
-    return { data, sha: json.sha };
+    const res = await fetch(`${GH_API}`, { method: 'GET' });
+    if (!res.ok) throw new Error(`Worker read failed: ${res.status}`);
+    return await res.json();
 }
 
 async function ghWrite(data, sha) {
-    const url     = `${GH_API}/repos/${CONFIG.owner}/${CONFIG.repo}/contents/${DATA_FILE}`;
-    const content = btoa(JSON.stringify(data, null, 2));
-    const body    = { message: 'update walk data', content, ...(sha ? { sha } : {}) };
-    const res = await fetch(url, {
+    const res = await fetch(`${GH_API}`, {
         method: 'PUT',
-        headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data, sha }),
     });
-    if (!res.ok) throw new Error(`GitHub write failed: ${res.status}`);
+    if (!res.ok) throw new Error(`Worker write failed: ${res.status}`);
     const json = await res.json();
-    return json.content.sha;
+    return json.sha;
 }
 
 // ── Sync state (held in memory during session) ─────────────────────────────
