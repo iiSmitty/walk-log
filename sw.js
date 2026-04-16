@@ -1,4 +1,4 @@
-const CACHE = 'walklog-v1';
+const CACHE = 'walklog-v2';
 const ASSETS = [
     '/',
     '/index.html',
