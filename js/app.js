@@ -4,13 +4,25 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function setLoading(on) {
     document.getElementById('weekCard').classList.toggle('loading', on);
-    document.getElementById('syncIndicator').classList.toggle('show', on);
 }
 
-function setSyncing(on) {
-    document.getElementById('syncIndicator').textContent = on ? 'syncing…' : 'synced ✓';
-    document.getElementById('syncIndicator').classList.add('show');
-    if (!on) setTimeout(() => document.getElementById('syncIndicator').classList.remove('show'), 2000);
+// state: 'syncing' | 'synced' | 'offline'
+function setSync(state) {
+    const el = document.getElementById('syncIndicator');
+    el.classList.remove('show', 'offline');
+    clearTimeout(el._hideTimer);
+    if (state === 'syncing') {
+        el.textContent = 'syncing…';
+        el.classList.add('show');
+    } else if (state === 'synced') {
+        el.textContent = 'synced ✓';
+        el.classList.add('show');
+        el._hideTimer = setTimeout(() => el.classList.remove('show'), 2000);
+    } else if (state === 'offline') {
+        el.textContent = 'offline';
+        el.classList.add('show', 'offline');
+        // stays visible until synced
+    }
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────────
@@ -154,10 +166,10 @@ function render(animateIdx = null) {
 }
 
 async function onDayTap(dayIndex) {
-    setSyncing(true);
-    const newState = await cycleDay(dayIndex);
-    render(newState === STATE_WALKED ? dayIndex : null);
-    setSyncing(false);
+    setSync('syncing');
+    const { state, synced } = await cycleDay(dayIndex);
+    render(state === STATE_WALKED ? dayIndex : null);
+    setSync(synced ? 'synced' : 'offline');
 }
 
 // ── History listeners ──────────────────────────────────────────────────────
@@ -173,13 +185,26 @@ document.getElementById('historyPanel').addEventListener('click', e => {
 async function init() {
     setLoading(true);
     render(); // render from cache immediately
-    await syncLoad();
-    render(); // re-render with fresh GitHub data
+    setSync('syncing');
+
+    let ok;
+    if (hasPendingSync()) {
+        // Offline changes exist — flush them before loading server state
+        ok = await syncFlushPending();
+    } else {
+        ok = await syncLoad();
+    }
+
+    render();
     setLoading(false);
+    setSync(ok ? 'synced' : 'offline');
 }
 
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') init();
 });
+
+window.addEventListener('online',  init);
+window.addEventListener('offline', () => setSync('offline'));
 
 init();

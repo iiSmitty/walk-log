@@ -86,10 +86,11 @@ body {
     letter-spacing: 0.06em;
     color: rgba(245,240,232,0.45);
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, color 0.2s;
     white-space: nowrap;
 }
-.sync-indicator.show { opacity: 1; }
+.sync-indicator.show    { opacity: 1; }
+.sync-indicator.offline { color: #c8832a; }
 
 .history-btn {
     background: none;

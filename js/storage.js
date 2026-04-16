@@ -39,28 +39,53 @@ async function ghWrite(data, sha) {
 
 // ── Sync state (held in memory during session) ─────────────────────────────
 
-let _sha  = null;
-let _data = null;
+let _sha          = null;
+let _data         = null;
+let _pendingSync  = false;
+
+function hasPendingSync() { return _pendingSync; }
 
 async function syncLoad() {
     try {
         const { data, sha } = await ghRead();
-        _sha  = sha;
-        _data = data;
+        _sha          = sha;
+        _data         = data;
+        _pendingSync  = false;
         cacheSave(data);
+        return true;
     } catch (e) {
         console.warn('GitHub read failed, falling back to cache:', e);
         _data = cacheLoad();
+        return false;
     }
 }
 
 async function syncSave() {
     try {
-        _sha = await ghWrite(_data, _sha);
+        _sha         = await ghWrite(_data, _sha);
+        _pendingSync = false;
         cacheSave(_data);
+        return true;
     } catch (e) {
         console.warn('GitHub write failed, saved to cache only:', e);
+        _pendingSync = true;
         cacheSave(_data);
+        return false;
+    }
+}
+
+// Push local pending changes when back online (fetch SHA first, then write)
+async function syncFlushPending() {
+    try {
+        const { sha } = await ghRead();
+        _sha          = sha;
+        _sha          = await ghWrite(_data, _sha);
+        _pendingSync  = false;
+        cacheSave(_data);
+        return true;
+    } catch (e) {
+        console.warn('Flush pending failed:', e);
+        return false;
     }
 }
 
@@ -105,14 +130,14 @@ function getState() {
 // Tap cycles: none → walked → rest → none
 async function cycleDay(dayIndex) {
     const { data, wk } = getState();
-    const cur  = data.weeks[wk][dayIndex];
-    const next = cur === STATE_NONE    ? STATE_WALKED
+    const cur    = data.weeks[wk][dayIndex];
+    const next   = cur === STATE_NONE    ? STATE_WALKED
         : cur === STATE_WALKED  ? STATE_REST
             :                        STATE_NONE;
     data.weeks[wk][dayIndex] = next;
     _data = data;
-    await syncSave();
-    return next;
+    const synced = await syncSave();
+    return { state: next, synced };
 }
 
 function todayIndex() {
