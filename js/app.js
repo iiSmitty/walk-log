@@ -8,20 +8,20 @@ function setLoading(on) {
 
 // state: 'syncing' | 'synced' | 'offline'
 function setSync(state) {
-    const el = document.getElementById('syncIndicator');
-    el.classList.remove('show', 'offline');
-    clearTimeout(el._hideTimer);
+    const ind    = document.getElementById('syncIndicator');
+    const banner = document.getElementById('offlineBanner');
+    ind.classList.remove('show');
+    clearTimeout(ind._hideTimer);
+
+    banner.classList.toggle('show', state === 'offline');
+
     if (state === 'syncing') {
-        el.textContent = 'syncing…';
-        el.classList.add('show');
+        ind.textContent = 'syncing…';
+        ind.classList.add('show');
     } else if (state === 'synced') {
-        el.textContent = 'synced ✓';
-        el.classList.add('show');
-        el._hideTimer = setTimeout(() => el.classList.remove('show'), 2000);
-    } else if (state === 'offline') {
-        el.textContent = 'offline';
-        el.classList.add('show', 'offline');
-        // stays visible until synced
+        ind.textContent = 'synced ✓';
+        ind.classList.add('show');
+        ind._hideTimer = setTimeout(() => ind.classList.remove('show'), 2000);
     }
 }
 

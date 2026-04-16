@@ -46,6 +46,10 @@ let _pendingSync  = false;
 function hasPendingSync() { return _pendingSync; }
 
 async function syncLoad() {
+    if (!navigator.onLine) {
+        _data = cacheLoad();
+        return false;
+    }
     try {
         const { data, sha } = await ghRead();
         _sha          = sha;
@@ -61,6 +65,11 @@ async function syncLoad() {
 }
 
 async function syncSave() {
+    if (!navigator.onLine) {
+        _pendingSync = true;
+        cacheSave(_data);
+        return false;
+    }
     try {
         _sha         = await ghWrite(_data, _sha);
         _pendingSync = false;
@@ -76,6 +85,7 @@ async function syncSave() {
 
 // Push local pending changes when back online (fetch SHA first, then write)
 async function syncFlushPending() {
+    if (!navigator.onLine) return false;
     try {
         const { sha } = await ghRead();
         _sha          = sha;
